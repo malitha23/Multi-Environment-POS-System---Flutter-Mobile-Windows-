@@ -14,7 +14,6 @@ class CalculatorBottomSheet extends StatefulWidget {
 }
 
 class _CalculatorBottomSheetState extends State<CalculatorBottomSheet> {
-// Text displayed on the screen
   String _currentInput = ''; // Current input being processed
   String _previousInput = ''; // Previous input (for operations)
   String _operation = ''; // Current operation (+, -, *, /)
@@ -132,7 +131,7 @@ class _CalculatorBottomSheetState extends State<CalculatorBottomSheet> {
     );
   }
 
-// Grid of calculator buttons
+  // Grid of calculator buttons
   Widget _buildButtonGrid(BuildContext context) {
     List<String> buttonText = [
       '7',
@@ -176,7 +175,7 @@ class _CalculatorBottomSheetState extends State<CalculatorBottomSheet> {
     );
   }
 
-// Updated _buildButton function to handle the new buttons
+  // Updated _buildButton function to handle the new buttons
   Widget _buildButton(String text, double size) {
     return ElevatedButton(
       onPressed: () => _onButtonPressed(text),
@@ -219,7 +218,11 @@ class _CalculatorBottomSheetState extends State<CalculatorBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    bool isDesktop = MediaQuery.of(context).size.width > 1100;
+    bool isTablet = MediaQuery.of(context).size.width > 900 &&
+        MediaQuery.of(context).size.width <= 1100;
     return Container(
+      width: 390,
       height:
           MediaQuery.of(context).size.height, // Set height to half the screen
       color: Colors.white,

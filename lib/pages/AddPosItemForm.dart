@@ -20,11 +20,7 @@ class _AddPosItemFormState extends State<AddPosItemForm> {
 
   // Controller for other fields
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _quantityController = TextEditingController();
   final TextEditingController _unitController = TextEditingController();
-  final TextEditingController _barcodeController = TextEditingController();
-  final TextEditingController _itemCodeController = TextEditingController();
-  final TextEditingController _discountController = TextEditingController();
   final TextEditingController _priceFormatController = TextEditingController();
 
   // Dynamic category and subcategory options
@@ -44,40 +40,56 @@ class _AddPosItemFormState extends State<AddPosItemForm> {
   }
 
   Future<void> _pickImage() async {
-    // For Android
     if (Platform.isAndroid) {
-      // Request storage permission
-      PermissionStatus permissionStatus = await Permission.storage.request();
-
-      // Check if permission is granted
-      if (permissionStatus.isGranted) {
-        final picker = ImagePicker();
-        final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-
-        if (pickedFile != null) {
-          // Crop the image after picking
-          _cropImage(pickedFile.path);
-        } else {
-          print('No image selected.');
-        }
-      } else {
-        // Permission denied, show a message
-        print('Storage permission denied');
-      }
+      await _pickImageForAndroid();
+    } else if (Platform.isWindows) {
+      await _pickImageForWindows();
+    } else if (Platform.isIOS) {
+      await _pickImageForIOS();
+    } else {
+      print("Platform not supported.");
     }
-    // For Windows
-    else if (Platform.isWindows) {
-      // Windows doesn't support cropping, so we just pick the image
-      final result = await FilePicker.platform.pickFiles(type: FileType.image);
+  }
 
-      if (result != null) {
-        setState(() {
-          _selectedImage =
-              File(result.files.single.path!); // Directly set the image file
-        });
+  Future<void> _pickImageForAndroid() async {
+    if (await Permission.camera.request().isGranted) {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+      if (pickedFile != null) {
+        // Crop the image after picking
+        await _cropImage(pickedFile.path);
       } else {
         print('No image selected.');
       }
+    } else {
+      // Permission denied, show a message
+      print('Storage permission denied');
+      await openAppSettings();
+    }
+  }
+
+  Future<void> _pickImageForWindows() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.image);
+
+    if (result != null) {
+      setState(() {
+        _selectedImage =
+            File(result.files.single.path!); // Directly set the image file
+      });
+    } else {
+      print('No image selected.');
+    }
+  }
+
+  Future<void> _pickImageForIOS() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null) {
+      await _cropImage(pickedFile.path);
+    } else {
+      print('No image selected.');
     }
   }
 
@@ -121,49 +133,97 @@ class _AddPosItemFormState extends State<AddPosItemForm> {
     }
   }
 
-  // Initial price inputs map where each key-value pair represents priceUnit and price
-  Map<String, double> priceInputs = {
-    '1': 0.0, // Predefined priceUnit value and price
+  Map<String, Map<String, dynamic>> priceInputs = {
+    '1': {
+      'price': 0.0,
+      'quantity': 0,
+      'color': '',
+      'barcode': '',
+      'itemCode': '',
+      'discountPercentage': 0.0,
+    }, // Example entry with price, quantity, and color
   };
 
   // Counter to keep track of the number of inputs added
   int _inputCounter =
-      2; // Start from 4 since you already have 3 predefined values
+      3; // Start from 3 to keep consistency with predefined values
 
   // Function to add a new price input with an empty priceUnit value
   void _addNewPriceInput() {
     setState(() {
       // Generate a unique incrementing key
-      String newpriceUnit = _inputCounter.toString();
-      priceInputs[newpriceUnit] =
-          0.0; // Add new entry with incremented key and 0.0 price
+      String newPriceUnit = _inputCounter.toString();
+      priceInputs[newPriceUnit] = {
+        'price': 0.0,
+        'quantity': 0,
+        'color': '',
+        'barcode': '',
+        'discountPercentage': 0.0,
+      }; // Add new entry with incremented key and default values
       _inputCounter++; // Increment counter for the next input
     });
   }
 
+  // Function to remove a price input
   void _removePriceInput(String priceUnit) {
     setState(() {
       priceInputs.remove(priceUnit);
     });
   }
 
-  // Function to handle changes in priceUnit and price inputs
+  // Function to handle changes in price
   void _onPriceChanged(String priceUnit, String value) {
     setState(() {
-      priceInputs[priceUnit] = double.tryParse(value) ??
-          0.0; // Update price for the given priceUnit value
+      if (priceInputs.containsKey(priceUnit)) {
+        priceInputs[priceUnit]!['price'] = double.tryParse(value) ?? 0.0;
+      }
     });
   }
 
-  // Function to handle changes in priceUnit input field
+  // Function to handle changes in quantity
+  void _onQuantityChanged(String priceUnit, String value) {
+    setState(() {
+      if (priceInputs.containsKey(priceUnit)) {
+        priceInputs[priceUnit]!['quantity'] = int.tryParse(value) ?? 0;
+      }
+    });
+  }
+
+  // Function to handle changes in color
+  void _onAdditionalChanged(String priceUnit, String value) {
+    setState(() {
+      if (priceInputs.containsKey(priceUnit)) {
+        priceInputs[priceUnit]!['additional'] = value;
+      }
+    });
+  }
+
+  // Function to handle changes in barcode
+  void _onBarcodeChanged(String priceUnit, String value) {
+    setState(() {
+      if (priceInputs.containsKey(priceUnit)) {
+        priceInputs[priceUnit]!['barcode'] = value;
+      }
+    });
+  }
+
+  // Function to handle changes in discount percentage
+  void _onDiscountPercentageChanged(String priceUnit, String value) {
+    setState(() {
+      double discount = double.tryParse(value) ?? 0.0;
+      if (priceInputs.containsKey(priceUnit)) {
+        priceInputs[priceUnit]!['discountPercentage'] = discount;
+      }
+    });
+  }
+
+  // Function to handle changes in priceUnit (if changed by user)
   void _onpriceUnitChanged(String priceUnit, String value) {
     setState(() {
-      // Allow user to enter any custom priceUnit value
-      if (double.tryParse(value) != null) {
-        priceInputs.remove(
-            priceUnit); // Remove the old priceUnit if it's updated to a new value
-        priceInputs[value] = priceInputs[priceUnit] ??
-            0.0; // Store the new priceUnit with its corresponding price
+      // If the unit changes, we need to move its current values to the new unit key
+      if (priceInputs.containsKey(priceUnit)) {
+        Map<String, dynamic> currentValues = priceInputs.remove(priceUnit)!;
+        priceInputs[value] = currentValues; // Move values to the new unit
       }
     });
   }
@@ -562,104 +622,208 @@ class _AddPosItemFormState extends State<AddPosItemForm> {
                       const SizedBox(
                           height: 15), // Space between header and price inputs
 
-                      // Dynamic Price Inputs List
                       ...priceInputs.entries.map((entry) {
                         final unitKey = entry.key; // Current unit (e.g., kg)
-                        final unitPrice = entry.value; // Corresponding price
+                        final unitDetails = entry
+                            .value; // Details for the unit: price, quantity, color, barcode, itemCode, discountPercentage
+
+                        final unitPrice = unitDetails['price']; // Access price
+                        final unitQuantity =
+                            unitDetails['quantity']; // Access quantity
+                        final unitColor = unitDetails['color']; // Access color
+                        final unitBarcode =
+                            unitDetails['barcode']; // Access barcode
+                        final unitDiscountPercentage = unitDetails[
+                            'discountPercentage']; // Access discount percentage
 
                         return Padding(
-                          padding: const EdgeInsets.only(
-                              bottom: 12), // Space between each price input row
-                          child: Row(
-                            children: [
-                              // Unit Input (e.g., Kg)
-                              Expanded(
-                                flex: 2,
-                                child: TextFormField(
-                                  initialValue: unitKey,
-                                  decoration: InputDecoration(
-                                    labelText: '${priceUnit ?? "Kg"}',
-                                    labelStyle: TextStyle(
-                                        color: AppColors.primaryColor),
-                                    hintText: 'Enter unit (e.g., Kg)',
-                                    filled: true,
-                                    fillColor: Colors.grey.shade100,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                          color: AppColors.primaryColor
-                                              .withOpacity(0.5),
-                                          width: 1.5),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                          color: AppColors.primaryColor,
-                                          width: 2),
-                                    ),
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  onChanged: (value) =>
-                                      _onpriceUnitChanged(unitKey, value),
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) {
-                                      return 'Enter a valid ${priceUnit ?? "unit"}';
-                                    }
-                                    if (double.tryParse(value) == null) {
-                                      return 'Invalid ${priceUnit ?? "unit"}';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 10),
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Container(
+                            color: Colors.grey.shade200,
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.only(top: 12, bottom: 12),
+                              child: Column(
+                                children: [
+                                  // Top row: Unit, Barcode, Item Code, and Discount Percentage
+                                  Row(
+                                    children: [
+                                      // Unit Input
+                                      Expanded(
+                                        flex: 1,
+                                        child: TextFormField(
+                                          initialValue: unitKey,
+                                          decoration: InputDecoration(
+                                            labelText: 'Unit',
+                                            filled: true,
+                                            fillColor: Colors.grey.shade100,
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              borderSide: BorderSide(
+                                                color: AppColors.primaryColor
+                                                    .withOpacity(0.5),
+                                                width: 1.5,
+                                              ),
+                                            ),
+                                          ),
+                                          onChanged: (value) =>
+                                              _onpriceUnitChanged(
+                                                  unitKey, value),
+                                        ),
+                                      ),
 
-                              // Price Input
-                              Expanded(
-                                flex: 2,
-                                child: TextFormField(
-                                  initialValue: unitPrice.toString(),
-                                  decoration: InputDecoration(
-                                    labelText: 'Price',
-                                    filled: true,
-                                    fillColor: Colors.grey.shade100,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                          color: AppColors.primaryColor
-                                              .withOpacity(0.5),
-                                          width: 1.5),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                          color: AppColors.primaryColor,
-                                          width: 2),
-                                    ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        flex: 1,
+                                        child: TextFormField(
+                                          initialValue: unitPrice.toString(),
+                                          decoration: InputDecoration(
+                                            labelText: 'Price',
+                                            filled: true,
+                                            fillColor: Colors.grey.shade100,
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              borderSide: BorderSide(
+                                                color: AppColors.primaryColor
+                                                    .withOpacity(0.5),
+                                                width: 1.5,
+                                              ),
+                                            ),
+                                          ),
+                                          keyboardType: TextInputType.number,
+                                          onChanged: (value) =>
+                                              _onPriceChanged(unitKey, value),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      // Discount Percentage Input
+                                      Expanded(
+                                        flex: 1,
+                                        child: TextFormField(
+                                          initialValue:
+                                              unitDiscountPercentage.toString(),
+                                          decoration: InputDecoration(
+                                            labelText: 'Discount %',
+                                            filled: true,
+                                            fillColor: Colors.grey.shade100,
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              borderSide: BorderSide(
+                                                color: AppColors.primaryColor
+                                                    .withOpacity(0.5),
+                                                width: 1.5,
+                                              ),
+                                            ),
+                                          ),
+                                          keyboardType: TextInputType.number,
+                                          onChanged: (value) =>
+                                              _onDiscountPercentageChanged(
+                                                  unitKey, value),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                    ],
                                   ),
-                                  keyboardType: TextInputType.number,
-                                  onChanged: (value) =>
-                                      _onPriceChanged(unitKey, value),
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) {
-                                      return 'Enter a valid price';
-                                    }
-                                    if (double.tryParse(value) == null) {
-                                      return 'Invalid price';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 10),
 
-                              // Remove Button
-                              IconButton(
-                                icon: const Icon(Icons.remove_circle,
-                                    color: Colors.red),
-                                onPressed: () => _removePriceInput(unitKey),
+                                  const SizedBox(height: 12),
+
+                                  // Bottom row: Price, Quantity, and Color
+                                  Row(
+                                    children: [
+                                      // Price Input
+                                      // Barcode Input
+                                      Expanded(
+                                        flex: 1,
+                                        child: TextFormField(
+                                          initialValue: unitBarcode,
+                                          decoration: InputDecoration(
+                                            labelText: 'Barcode',
+                                            filled: true,
+                                            fillColor: Colors.grey.shade100,
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              borderSide: BorderSide(
+                                                color: AppColors.primaryColor
+                                                    .withOpacity(0.5),
+                                                width: 1.5,
+                                              ),
+                                            ),
+                                          ),
+                                          onChanged: (value) =>
+                                              _onBarcodeChanged(unitKey, value),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+
+                                      // Quantity Input
+                                      Expanded(
+                                        flex: 1,
+                                        child: TextFormField(
+                                          initialValue: unitQuantity.toString(),
+                                          decoration: InputDecoration(
+                                            labelText: 'Quantity',
+                                            filled: true,
+                                            fillColor: Colors.grey.shade100,
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              borderSide: BorderSide(
+                                                color: AppColors.primaryColor
+                                                    .withOpacity(0.5),
+                                                width: 1.5,
+                                              ),
+                                            ),
+                                          ),
+                                          keyboardType: TextInputType.number,
+                                          onChanged: (value) =>
+                                              _onQuantityChanged(
+                                                  unitKey, value),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+
+                                      // Color Input
+                                      Expanded(
+                                        flex: 1,
+                                        child: TextFormField(
+                                          initialValue: unitColor,
+                                          decoration: InputDecoration(
+                                            labelText: 'Additional',
+                                            filled: true,
+                                            fillColor: Colors.grey.shade100,
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              borderSide: BorderSide(
+                                                color: AppColors.primaryColor
+                                                    .withOpacity(0.5),
+                                                width: 1.5,
+                                              ),
+                                            ),
+                                          ),
+                                          onChanged: (value) =>
+                                              _onAdditionalChanged(
+                                                  unitKey, value),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+
+                                      // Remove Button
+                                      IconButton(
+                                        icon: const Icon(Icons.remove_circle,
+                                            color: Colors.red),
+                                        onPressed: () =>
+                                            _removePriceInput(unitKey),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
                         );
                       }).toList(),
@@ -693,110 +857,6 @@ class _AddPosItemFormState extends State<AddPosItemForm> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Quantity Field
-                    TextFormField(
-                      controller: _quantityController,
-                      decoration: InputDecoration(
-                        labelText: 'Quantity',
-                        labelStyle: TextStyle(color: AppColors.primaryColor),
-                        hintText: 'Enter quantity',
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                              color: AppColors.primaryColor.withOpacity(0.5),
-                              width: 1.5),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                              color: AppColors.primaryColor, width: 2),
-                        ),
-                      ),
-                      keyboardType: TextInputType.number,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter the quantity';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12), // Space between fields
-
-                    // Barcode Field
-                    TextFormField(
-                      controller: _barcodeController,
-                      decoration: InputDecoration(
-                        labelText: 'Barcode',
-                        labelStyle: TextStyle(color: AppColors.primaryColor),
-                        hintText: 'Enter barcode',
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                              color: AppColors.primaryColor.withOpacity(0.5),
-                              width: 1.5),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                              color: AppColors.primaryColor, width: 2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Item Code Field
-                    TextFormField(
-                      controller: _itemCodeController,
-                      decoration: InputDecoration(
-                        labelText: 'Item Code',
-                        labelStyle: TextStyle(color: AppColors.primaryColor),
-                        hintText: 'Enter item code',
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                              color: AppColors.primaryColor.withOpacity(0.5),
-                              width: 1.5),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                              color: AppColors.primaryColor, width: 2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Discount Field
-                    TextFormField(
-                      controller: _discountController,
-                      decoration: InputDecoration(
-                        labelText: 'Discount',
-                        labelStyle: TextStyle(color: AppColors.primaryColor),
-                        hintText: 'Enter discount percentage',
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                              color: AppColors.primaryColor.withOpacity(0.5),
-                              width: 1.5),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                              color: AppColors.primaryColor, width: 2),
-                        ),
-                      ),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 12),
-
                     // Price Format Field
                     TextFormField(
                       controller: _priceFormatController,
@@ -859,25 +919,28 @@ class _AddPosItemFormState extends State<AddPosItemForm> {
                         'name': _nameController.text,
                         'category': selectedCategory,
                         'subCategory': selectedSubCategory,
-                        'quantity': int.tryParse(_quantityController.text) ?? 0,
                         'unit': _unitController.text,
-                        'barcode': _barcodeController.text,
-                        'itemCode': _itemCodeController.text,
-                        'discount': _discountController.text.isNotEmpty
-                            ? int.tryParse(_discountController.text) ?? 0
-                            : 0,
                         'priceFormat': _priceFormatController.text,
                         'price':
                             priceInputs, // Ensure priceInputs is correctly formatted
                       };
 
                       try {
-                        // Save the image locally
+                        // Get the application's document directory
                         final directory =
                             await getApplicationDocumentsDirectory();
+
+                        // Create the posItemImages subdirectory if it doesn't exist
+                        final posItemImagesDirectory =
+                            Directory('${directory.path}/posItemImages');
+                        if (!await posItemImagesDirectory.exists()) {
+                          await posItemImagesDirectory.create(recursive: true);
+                        }
+
+                        // Generate the image name and save the image
                         final imageName = path.basename(_selectedImage!.path);
                         final savedImage = await _selectedImage!
-                            .copy('${directory.path}/$imageName');
+                            .copy('${posItemImagesDirectory.path}/$imageName');
 
                         // Add image path to the form data
                         posItem['image'] = savedImage.path;
