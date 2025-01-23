@@ -1,80 +1,91 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shop_pos_system_app/database/database_helper.dart';
 
 import 'package:shop_pos_system_app/pages/AddPosItemForm.dart';
 import 'package:shop_pos_system_app/pages/Pos_Home_Page.dart';
 import 'package:shop_pos_system_app/pages/ShopRegistrationPage%20.dart';
 import 'package:shop_pos_system_app/pages/ShowAllPosItemsPage.dart';
+import 'package:shop_pos_system_app/pages/UpdateAllPosItemsPage.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:window_manager/window_manager.dart';
 
-void main() async {
+Future<void> main() async {
   // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
 
   // Set up error handling
   FlutterError.onError = (FlutterErrorDetails details) {
-    logError('Flutter Error: ${details.exceptionAsString()}\n${details.stack}');
+    logError(
+      'Flutter Error: ${details.exceptionAsString()}\n${details.stack}',
+    );
   };
 
   try {
-    // Initialize the window manager and database
-    await windowManager.ensureInitialized();
-
-    // Full-screen mode for Windows only
-    if (Platform.isWindows) {
-      windowManager.waitUntilReadyToShow().then((_) async {
-        // Start in full-screen mode
-        await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
-        await windowManager.setFullScreen(false);
-
-        // Show the window after initialization
-        await windowManager.show();
-        await windowManager.focus();
-
-        // After startup, allow resizing and minimizing
-        Future.delayed(Duration(seconds: 1), () async {
-          await windowManager.setResizable(true);
-          await windowManager.setFullScreen(false); // Exit full-screen mode
-        });
-      });
-    }
-
-    // Initialize database for Windows, Linux, and macOS
+    // Initialize window manager for desktop platforms
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      await windowManager.ensureInitialized();
+      await setupWindowManager();
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
 
+    // Initialize the database
     await DatabaseHelper.getDatabase();
     await DatabaseHelper.showAllTables();
 
-    // Run the app after initialization
+    // Run the app
     runApp(MyApp());
   } catch (error, stackTrace) {
     logError('Dart Error: $error\n$stackTrace');
   }
 }
 
-// Log error to the Downloads folder
+Future<void> setupWindowManager() async {
+  await windowManager.waitUntilReadyToShow();
+  await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
+  await windowManager.setFullScreen(false);
+  await windowManager.show();
+  await windowManager.focus();
+  Future.delayed(const Duration(seconds: 1), () async {
+    await windowManager.setResizable(true);
+    await windowManager.setFullScreen(false);
+  });
+}
+
 void logError(String message) async {
   try {
-    String? userProfile = Platform.environment['USERPROFILE'];
-    if (userProfile != null) {
-      String downloadsPath = '$userProfile\\Downloads';
-      String logFilePath = '$downloadsPath\\app_error_log.txt';
+    String logFilePath;
 
-      File logFile = File(logFilePath);
-      await logFile.writeAsString(
-        '[${DateTime.now()}] $message\n',
-        mode: FileMode.append,
-      );
-      print('Error logged to $logFilePath');
+    if (Platform.isAndroid) {
+      // Get the app's documents directory for Android
+      final directory = await getApplicationDocumentsDirectory();
+      logFilePath = '${directory.path}/app_error_log.txt';
+    } else if (Platform.isWindows) {
+      // Use the Downloads folder for Windows
+      final String? userProfile = Platform.environment['USERPROFILE'];
+      if (userProfile != null) {
+        final String downloadsPath = '$userProfile\\Downloads';
+        logFilePath = '$downloadsPath\\app_error_log.txt';
+      } else {
+        print('Failed to locate the Downloads folder on Windows.');
+        return;
+      }
     } else {
-      print('Failed to locate the Downloads folder');
+      print('Logging is not supported on this platform.');
+      return;
     }
+
+    // Write the error log
+    final File logFile = File(logFilePath);
+    await logFile.writeAsString(
+      '[${DateTime.now()}] $message\n',
+      mode: FileMode.append,
+    );
+
+    print('Error logged to $logFilePath');
   } catch (e) {
     print('Failed to log error: $e');
   }
@@ -95,6 +106,7 @@ class MyApp extends StatelessWidget {
         '/posHomePage': (context) => PosHomePage(),
         '/AddPosItemForm': (context) => AddPosItemForm(),
         '/showAllPosItemsPage': (context) => ShowAllPosItemsPage(),
+        '/updateAllPosItemsPage': (context) => ShowUpdatePosItemsPage(),
       },
     );
   }

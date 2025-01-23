@@ -624,4 +624,159 @@ class DatabaseHelper {
     final db = await getDatabase();
     await db.close();
   }
+
+  Future<void> deleteProduct(dynamic itemId) async {
+    String itemIdString = itemId.toString();
+    final db = await getDatabase();
+
+    // Step 1: Retrieve the product image path from the posItems table
+    var product = await db.query(
+      'posItems',
+      columns: ['image'], // Retrieve the image column
+      where: 'id = ?',
+      whereArgs: [itemIdString],
+    );
+
+    if (product.isNotEmpty) {
+      String imagePath = product.first['image'] as String;
+
+      // Step 2: Check if the image path is not empty
+      if (imagePath.isNotEmpty) {
+        final existingImage = File(imagePath);
+
+        // Step 3: Check if the image file exists
+        if (await existingImage.exists()) {
+          await existingImage.delete(); // Remove the old image
+          print('Deleted image: $imagePath');
+        }
+      }
+    }
+
+    // Step 4: Delete stocks associated with the item
+    await db.delete(
+      'stock',
+      where: 'item_id = ?',
+      whereArgs: [itemIdString],
+    );
+    print('Deleted all stocks associated with item ID: $itemIdString');
+
+    // Step 5: Delete the item from posItems
+    await db.delete(
+      'posItems',
+      where: 'id = ?',
+      whereArgs: [itemIdString],
+    );
+    print('Deleted product with ID: $itemIdString');
+  }
+
+  // Function to delete stock using item ID and stock ID
+  Future<void> deleteStock(dynamic itemId, dynamic stockId) async {
+    String itemIdString = itemId.toString();
+    String stockIdString = stockId.toString();
+    final db = await getDatabase();
+    await db.delete(
+      'stock',
+      where: 'item_id = ? AND stockId = ?',
+      whereArgs: [itemIdString, stockIdString],
+    );
+    print(
+        'Deleted stock with ID: $stockIdString for item with ID: $itemIdString');
+  }
+
+  // Function to delete price using item ID, stock ID, and item code
+  Future<void> deletePrice(
+      dynamic itemId, dynamic stockId, dynamic itemCode) async {
+    String itemIdString = itemId.toString();
+    String stockIdString = stockId.toString();
+    String itemCodeString = itemCode.toString();
+    final db = await getDatabase();
+    await db.delete(
+      'stock',
+      where: 'item_id = ? AND stockId = ? AND itemCode = ?',
+      whereArgs: [itemIdString, stockIdString, itemCodeString],
+    );
+    print(
+        'Deleted price for item with ID: $itemIdString, stock ID: $stockIdString, and item code: $itemCodeString');
+  }
+
+  static Future<bool> updateItem(Map<String, dynamic> updatedItem) async {
+    try {
+      final db = await getDatabase();
+
+      // Ensure all fields are non-null before updating
+      final name = updatedItem['name'] ?? '';
+      final category = updatedItem['category'] ?? '';
+      final subCategory = updatedItem['subCategory'] ?? '';
+      final image = updatedItem['image'] ?? '';
+
+      final itemId = updatedItem['id'];
+      if (itemId == null) {
+        print('Error: Item ID is missing');
+        return false;
+      }
+
+      // Update posItems table
+      final updatePosItemResult = await db.update(
+        'posItems',
+        {
+          'name': name,
+          'category': category,
+          'subCategory': subCategory,
+          'image': image,
+        },
+        where: 'id = ?',
+        whereArgs: [itemId],
+      );
+
+      // Check if the posItems update was successful
+      if (updatePosItemResult == 0) {
+        print('Error: No rows updated for posItem with id $itemId');
+        return false;
+      }
+
+      // Update stock details in the stock table
+      for (var stock in updatedItem['stock']) {
+        for (var detail in stock['details']) {
+          // Ensure non-null values for stock details
+          final price = detail['price'] ?? 0.0;
+          final quantity = detail['quantity'] ?? 0;
+          final discountPercentage = detail['discountPercentage'] ?? 0.0;
+          final size = detail['size'] ?? '';
+          final unit = detail['unit'] ?? '';
+          final priceFormat = detail['priceFormat'] ?? '';
+          final additional = detail['additional'] ?? '';
+          final barcode = detail['barcode'] ?? '';
+
+          final updateStockResult = await db.update(
+            'stock',
+            {
+              'price': price,
+              'quantity': quantity,
+              'discountPercentage': discountPercentage,
+              'size': size,
+              'unit': unit,
+              'priceFormat': priceFormat,
+              'additional': additional,
+              'barcode': barcode,
+            },
+            where: 'stockId = ?',
+            whereArgs: [stock['stockId']],
+          );
+
+          // Check if stock update was successful
+          if (updateStockResult == 0) {
+            print(
+                'Error: No rows updated for stock with stockId ${stock['stockId']}');
+            return false;
+          }
+        }
+      }
+
+      print('Item updated successfully');
+      return true; // Return true if everything was successful
+    } catch (e) {
+      print('Error updating item: $e');
+      return false; // Return false if there was an error
+    }
+  }
 }

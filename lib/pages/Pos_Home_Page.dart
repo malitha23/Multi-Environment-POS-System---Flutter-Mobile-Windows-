@@ -2093,9 +2093,12 @@ class _PosHomePageState extends State<PosHomePage> {
         child: IgnorePointer(
           ignoring: isOpened,
           child: Scaffold(
-            appBar: CustomAppBar(
-              title: 'Home',
-            ),
+            appBar: (Platform.isWindows || Platform.isAndroid)
+                ? CustomAppBar(
+                    title: '',
+                  )
+                : null, // No AppBar for other platforms
+
             body: Stack(
               children: [
                 isDesktop

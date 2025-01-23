@@ -54,6 +54,9 @@ dependencies:
   pdf_image_renderer: ^1.0.1
   file_saver: ^0.2.14
   window_manager: ^0.4.3
+  awesome_dialog: ^3.2.1
+  rive: ^0.13.20
+  rive_common: ^0.4.15
 
 dev_dependencies:
   flutter_test:

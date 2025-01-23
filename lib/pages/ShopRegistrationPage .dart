@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shop_pos_system_app/constants/app_colors.dart';
 import 'package:shop_pos_system_app/database/database_helper.dart';
+import 'package:shop_pos_system_app/main.dart';
 import 'package:shop_pos_system_app/pages/widgets/FullScreenLoader.dart';
 
 class ShopRegisterPage extends StatefulWidget {
@@ -42,7 +45,6 @@ class _ShopRegisterPageState extends State<ShopRegisterPage> {
       // Handle error if needed
       print("Error checking shop: $e");
     } finally {
-      await Future.delayed(Duration(seconds: 3));
       setState(() {
         isLoading = false; // Loading finished
       });
@@ -124,6 +126,12 @@ class _ShopRegisterPageState extends State<ShopRegisterPage> {
     final screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
+      appBar: (Platform.isWindows || Platform.isAndroid)
+          ? CustomAppBar(
+              title: '',
+            )
+          : null, // No AppBar for other platforms
+
       body: isLoading
           ? Center(
               child: FullScreenLoader(), // Show loader while loading

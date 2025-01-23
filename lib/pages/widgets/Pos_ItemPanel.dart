@@ -259,6 +259,7 @@ class _ItemPanelState extends State<ItemPanel> {
                               // Set the selected item to true and all others to false
                               selectedPrices.forEach((key, _) {
                                 selectedPrices[key] = false; // Set all to false
+                                totalPrice = 0.0;
                               });
                               selectedPrices[detail['itemCode']] =
                                   value ?? false; // Set selected to true

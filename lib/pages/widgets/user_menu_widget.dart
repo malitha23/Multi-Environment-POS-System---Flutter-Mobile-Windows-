@@ -116,7 +116,7 @@ class _MenuWidgetState extends State<MenuWidget> {
                 ),
                 ListTile(
                   onTap: () {
-                    // Navigate to Update Item
+                    Navigator.pushNamed(context, '/updateAllPosItemsPage');
                   },
                   leading:
                       const Icon(Icons.edit, size: 18.0, color: Colors.white),
