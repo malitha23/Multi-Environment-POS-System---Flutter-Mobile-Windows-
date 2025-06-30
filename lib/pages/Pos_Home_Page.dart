@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:pdf/pdf.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal_windows.dart';
+import 'package:printing/printing.dart';
 import 'package:shop_pos_system_app/constants/app_colors.dart';
 import 'package:shop_pos_system_app/database/database_helper.dart';
 import 'package:shop_pos_system_app/main.dart';
@@ -44,6 +48,11 @@ class _PosHomePageState extends State<PosHomePage> {
   bool _isLoading = false; // Track loading state
   final int pageSize = 20;
   Timer? _debounce;
+  bool _loading = false;
+  bool _connected = false;
+  List<BluetoothInfo> _devices = [];
+  bool _isProcessing = false;
+
   @override
   void initState() {
     super.initState();
@@ -51,7 +60,319 @@ class _PosHomePageState extends State<PosHomePage> {
     _scrollController = ScrollController();
     _scrollController.addListener(_scrollListener);
     _fetchPosItems();
+    _getBluetoothDevices();
     _searchController.addListener(_onSearchChanged);
+  }
+
+// Show dialog box to select Bluetooth device
+  void _showDeviceSelectionDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Select a Bluetooth Device"),
+          content: _loading
+              ? Center(child: CircularProgressIndicator())
+              : _devices.isEmpty
+                  ? Text("No devices found.")
+                  : SingleChildScrollView(
+                      child: ListView.builder(
+                      itemCount: _devices.isNotEmpty ? _devices.length : 0,
+                      itemBuilder: (context, index) {
+                        return ListTile(
+                          onTap: () {
+                            String mac = _devices[index].macAdress;
+                            connect(mac);
+                          },
+                          title: Text('Name: ${_devices[index].name}'),
+                          subtitle:
+                              Text("macAddress: ${_devices[index].macAdress}"),
+                        );
+                      },
+                    )),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () {
+                // Refresh the device list by calling _getBluetoothDevices again
+                _getBluetoothDevices();
+              },
+              child: Text("Refresh"), // Refresh button
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> connect(String mac) async {
+    setState(() {
+      _connected = false;
+    });
+    final bool result =
+        await PrintBluetoothThermal.connect(macPrinterAddress: mac);
+    print("state conected $result");
+    if (result) _connected = true;
+    _printPDF();
+  }
+
+  Future<void> disconnect() async {
+    final bool status = await PrintBluetoothThermal.disconnect;
+    setState(() {
+      _connected = false;
+    });
+    print("status disconnect $status");
+  }
+
+  // desktop usb printer connection
+  // Future<void> _downloadAndPrintPDF() async {
+  //   try {
+  //     // 1. Generate PDF
+  //     final pdfGenerator = PDFGenerator();
+  //     final filePath = await pdfGenerator.generateAndSavePDF(checkoutItems);
+
+  //     final file = File(filePath);
+  //     if (!await file.exists()) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(content: Text('PDF file not found')),
+  //       );
+  //       return;
+  //     }
+
+  //     final fileBytes = await file.readAsBytes();
+
+  //     // 2. Save (download) PDF
+  //     await FileSaver.instance.saveFile(
+  //       name: 'invoice',
+  //       bytes: fileBytes,
+  //       ext: 'pdf',
+  //     );
+
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(content: Text('PDF downloaded successfully')),
+  //     );
+
+  //     // 3. Check printer status
+  //     final info = await Printing.info();
+  //     if (!info.canPrint) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(content: Text('No printer available or not connected')),
+  //       );
+  //       return;
+  //     }
+
+  //     // 4. Print the PDF
+  //     await Printing.layoutPdf(
+  //       onLayout: (PdfPageFormat format) async => fileBytes,
+  //       usePrinterSettings: true, // Use printer settings if available
+  //     );
+
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(content: Text('PDF sent to printer')),
+  //     );
+  //   } catch (e) {
+  //     print("Error while downloading or printing: $e");
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(content: Text('Error: $e')),
+  //     );
+  //   }
+  // }
+
+  Future<String> getSumatraPDFPath() async {
+    final userProfile = Platform.environment['USERPROFILE'];
+    if (userProfile == null) {
+      throw Exception('USERPROFILE environment variable not found');
+    }
+    return '$userProfile\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe';
+  }
+
+  Future<void> silentPrintWithSumatra(
+      String pdfFilePath, String printerName) async {
+    try {
+      final sumatraPDFPath = getSumatraPDFPath();
+      final file = File(await sumatraPDFPath);
+      print(file.path.toString());
+      print('Exists: ${await file.exists()}');
+      if (!await file.exists()) {
+        throw Exception('SumatraPDF.exe not found at $sumatraPDFPath');
+      }
+
+      final result = await Process.run(
+        await sumatraPDFPath,
+        ['-print-to', printerName, '-silent', pdfFilePath],
+      );
+
+      if (result.exitCode != 0) {
+        throw Exception('Silent print failed: ${result.stderr}');
+      }
+    } catch (e) {
+      throw Exception('Error during silent print: $e');
+    }
+  }
+
+  Future<void> _downloadAndPrintPDF() async {
+    try {
+      // 1. Generate PDF
+      final pdfGenerator = PDFGenerator();
+      final filePath = await pdfGenerator.generateAndSavePDF(checkoutItems);
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF file not found')),
+        );
+        return;
+      }
+
+      final fileBytes = await file.readAsBytes();
+
+      // 2. Save (download) PDF
+      await FileSaver.instance.saveFile(
+        name: 'invoice',
+        bytes: fileBytes,
+        ext: 'pdf',
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('PDF downloaded successfully')),
+      );
+
+      // 3. Check printer availability (optional)
+      final info = await Printing.info();
+      if (!info.canPrint) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No printer available or not connected')),
+        );
+        return;
+      }
+
+      // 4. Silent print using SumatraPDF
+      try {
+        const printerName =
+            'EPSON L130 Series'; // <-- ඔබේ printer නම මෙහි දාන්න
+        await silentPrintWithSumatra(filePath, printerName);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF sent to printer silently')),
+        );
+      } catch (e) {
+        print('Silent print error: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Silent print error: $e')),
+        );
+      }
+    } catch (e) {
+      print("Error while downloading or printing: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
+  }
+
+  void _printPDF() async {
+    bool conexionStatus = await PrintBluetoothThermal.connectionStatus;
+    if (!conexionStatus) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Printer not connected")),
+      );
+      return; // Exit early if not connected
+    }
+
+    try {
+      final pdfGenerator = PDFGenerator(); // Your PDF generator logic
+      final filePath = await pdfGenerator.generateAndSavePDF(checkoutItems);
+
+      if (Platform.isAndroid || Platform.isIOS) {
+        // Android/iOS: Save to Downloads directory
+        final downloadDirectory = Directory('/storage/emulated/0/Download');
+        if (!await downloadDirectory.exists()) {
+          await downloadDirectory.create(recursive: true);
+        }
+
+        final fileName = 'invoice.pdf';
+        final newFilePath = '${downloadDirectory.path}/$fileName';
+
+        final file = File(filePath);
+        await file.copy(newFilePath);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF downloaded to $newFilePath')),
+        );
+      } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        // Desktop platforms: Use FileSaver
+        final file = File(filePath);
+        final fileBytes = await file.readAsBytes();
+
+        await FileSaver.instance.saveFile(
+          name: 'invoice',
+          bytes: fileBytes,
+          ext: 'pdf',
+        );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('PDF downloaded to your default downloads folder')),
+        );
+      }
+
+      final file = File(filePath);
+      final bytes = await file.readAsBytes();
+
+      bool result = false;
+
+      if (Platform.isWindows) {
+        result = await PrintBluetoothThermalWindows.writeBytes(bytes: bytes);
+      } else {
+        result = await PrintBluetoothThermal.writeBytes(bytes);
+      }
+
+      if (result) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF sent to thermal printer')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to print PDF')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error downloading or printing PDF: $e')),
+      );
+      print('Error: $e'); // Log the error for debugging
+    }
+  }
+
+  // Get Bluetooth devices
+  Future<void> requestPermissions() async {
+    var bluetoothPermission = await Permission.bluetooth.status;
+    var locationPermission = await Permission.locationWhenInUse.status;
+
+    if (!bluetoothPermission.isGranted) {
+      await Permission.bluetooth.request();
+    }
+    if (!locationPermission.isGranted) {
+      await Permission.locationWhenInUse.request();
+    }
+  }
+
+  // Get the list of bonded Bluetooth devices
+  void _getBluetoothDevices() async {
+    setState(() {
+      _loading = true; // Set loading to true when searching for devices
+    });
+
+    // Request permissions first
+    await requestPermissions();
+
+    final List<BluetoothInfo> listResult =
+        await PrintBluetoothThermal.pairedBluetooths;
+    setState(() {
+      _devices = listResult;
+      _loading = false;
+    });
   }
 
 // When the search text changes
@@ -2579,78 +2900,43 @@ class _PosHomePageState extends State<PosHomePage> {
                 ),
                 const SizedBox(height: 20),
                 SizedBox(
-                  width: double.infinity, // Makes the button take full width
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final pdfGenerator = PDFGenerator();
-                      final filePath =
-                          await pdfGenerator.generateAndSavePDF(checkoutItems);
+                    width: double.infinity, // Makes the button take full width
+                    child: ElevatedButton(
+                      onPressed: _isProcessing
+                          ? null
+                          : () async {
+                              setState(() => _isProcessing = true);
 
-                      try {
-                        if (Platform.isAndroid || Platform.isIOS) {
-                          // Get the Downloads directory for Android
-                          final downloadDirectory =
-                              Directory('/storage/emulated/0/Download');
-                          if (!await downloadDirectory.exists()) {
-                            await downloadDirectory.create(recursive: true);
-                          }
+                              await _downloadAndPrintPDF();
 
-                          final fileName = 'invoice.pdf';
-                          final newFilePath =
-                              '${downloadDirectory.path}/$fileName';
-
-                          final file = File(filePath);
-                          await file.copy(newFilePath);
-
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text('PDF downloaded to $newFilePath'),
-                          ));
-                        } else if (Platform.isWindows ||
-                            Platform.isLinux ||
-                            Platform.isMacOS) {
-                          // For Desktop platforms, use FileSaver to save the file
-                          final file = File(filePath);
-                          final fileBytes = await file.readAsBytes();
-
-                          // Use FileSaver to save the file
-                          await FileSaver.instance.saveFile(
-                            name: 'invoice', // File name without extension
-                            bytes: fileBytes,
-                            ext: 'pdf', // File extension
-                          );
-
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text(
-                                'PDF downloaded to your default downloads folder'),
-                          ));
-                        }
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text('Error downloading PDF: $e'),
-                        ));
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      backgroundColor:
-                          Colors.green, // Green color for the button
-                      padding: const EdgeInsets.symmetric(
-                        horizontal:
-                            0, // Set horizontal padding to 0 for full width
-                        vertical: 20,
+                              setState(() => _isProcessing = false);
+                            },
+                      style: ElevatedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        backgroundColor: Colors.green,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 0,
+                          vertical: 20,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(30), // Rounded corners
-                      ),
-                      textStyle: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    child: const Text('Pay'),
-                  ),
-                )
+                      child: _isProcessing
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.5,
+                              ),
+                            )
+                          : const Text('Pay'),
+                    ))
               ],
             ),
         ],

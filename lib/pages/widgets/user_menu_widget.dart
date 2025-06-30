@@ -139,15 +139,17 @@ class _MenuWidgetState extends State<MenuWidget> {
           ),
           // Home Section
 
-          // // Other Menu Items
-          // ListTile(
-          //   onTap: () {},
-          //   leading: const Icon(Icons.monetization_on,
-          //       size: 20.0, color: Colors.white),
-          //   title: const Text("Wallet"),
-          //   textColor: Colors.white,
-          //   dense: true,
-          // ),
+          // Other Menu Items
+          ListTile(
+            onTap: () {
+              Navigator.pushNamed(context, '/myapp2');
+            },
+            leading: const Icon(Icons.monetization_on,
+                size: 20.0, color: Colors.white),
+            title: const Text("Second enxample"),
+            textColor: Colors.white,
+            dense: true,
+          ),
           // ListTile(
           //   onTap: () {},
           //   leading: const Icon(Icons.shopping_cart,

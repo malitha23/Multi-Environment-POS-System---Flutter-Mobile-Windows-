@@ -9,6 +9,7 @@ import 'package:shop_pos_system_app/pages/Pos_Home_Page.dart';
 import 'package:shop_pos_system_app/pages/ShopRegistrationPage%20.dart';
 import 'package:shop_pos_system_app/pages/ShowAllPosItemsPage.dart';
 import 'package:shop_pos_system_app/pages/UpdateAllPosItemsPage.dart';
+import 'package:shop_pos_system_app/pages/print_bluetooth_thermal.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -107,6 +108,7 @@ class MyApp extends StatelessWidget {
         '/AddPosItemForm': (context) => AddPosItemForm(),
         '/showAllPosItemsPage': (context) => ShowAllPosItemsPage(),
         '/updateAllPosItemsPage': (context) => ShowUpdatePosItemsPage(),
+        '/myapp2': (context) => MyApp2(),
       },
     );
   }
